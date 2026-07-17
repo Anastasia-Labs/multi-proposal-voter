@@ -20,6 +20,7 @@ DREP_HASH_RE = re.compile(r"^[0-9a-f]{56}$")
 DREP_ID_RE = re.compile(r"^drep1[023456789acdefghjklmnpqrstuvwxyz]{20,100}$")
 MAX_ACTIONS = 20
 ROOT = Path(__file__).resolve().parent
+STATIC_ROOT = ROOT / "dist"
 
 
 def koios_json(path: str, *, body: dict | None = None) -> object:
@@ -42,7 +43,7 @@ class VoterHandler(SimpleHTTPRequestHandler):
     server_version = "CardanoLocalVoter/1.0"
 
     def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(STATIC_ROOT), **kwargs)
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -213,6 +214,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Serve the local Cardano multi-proposal voter.")
     parser.add_argument("--port", type=int, default=8793)
     args = parser.parse_args()
+    if not (STATIC_ROOT / "index.html").is_file():
+        parser.error("Compiled assets are missing. Run 'npm ci && npm run build' first.")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), VoterHandler)
     print(f"Multi-proposal voter: http://127.0.0.1:{args.port}/", flush=True)
     try:

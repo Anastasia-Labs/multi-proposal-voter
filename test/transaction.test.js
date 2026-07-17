@@ -1,81 +1,118 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import vm from "node:vm";
 
-async function loadTransactionInternals() {
-  const source = (await readFile(new URL("../app.js", import.meta.url), "utf8"))
-    .replace(/\nbootstrap\(\);\s*$/, "\n")
-    .concat(`
-      globalThis.__internals = {
-        buildTransaction, byteStringPayload, bytesToHex, decodeUnsigned,
-        encodeArray, encodeBytes, encodeUInt, hexToBytes, readArrayItems,
-        readMapEntries, unwrapTags,
-      };
-    `);
-  const context = vm.createContext({ URL, Uint8Array });
-  vm.runInContext(source, context);
-  return context.__internals;
-}
+import {
+  CML,
+  Emulator,
+  Lucid,
+  generateEmulatorAccount,
+} from "@lucid-evolution/lucid";
 
-function mapValue(internals, mapBytes, key) {
-  const entry = internals.readMapEntries(mapBytes)
-    .find((candidate) => internals.decodeUnsigned(candidate.keyRaw) === BigInt(key));
-  assert.ok(entry, `CBOR map key ${key} should exist`);
-  return entry.valueRaw;
-}
+import {
+  assembleCanonicalTransaction,
+  buildVotingTransaction,
+  drepIdFromKeyHash,
+  verifyWitnessSet,
+} from "../src/transaction.js";
 
-test("one transaction carries multiple votes and returns all change to the fee address", async () => {
-  const cbor = await loadTransactionInternals();
-  const feeInputHash = "11".repeat(32);
-  const feeInput = cbor.encodeArray([cbor.encodeBytes(cbor.hexToBytes(feeInputHash)), cbor.encodeUInt(7)]);
-  const feeChangeAddress = new Uint8Array(57).fill(0xa5);
-  feeChangeAddress[0] = 0x01;
-  const drepKeyHash = "d4".repeat(28);
-  const actions = [
-    { txHash: "aa".repeat(32), index: 0, vote: "yes" },
-    { txHash: "bb".repeat(32), index: 1, vote: "no" },
-    { txHash: "cc".repeat(32), index: 2, vote: "abstain" },
-  ];
+const ACTIONS = [
+  { txHash: "aa".repeat(32), index: 0, vote: "yes" },
+  { txHash: "bb".repeat(32), index: 1, vote: "no" },
+  { txHash: "cc".repeat(32), index: 2, vote: "abstain" },
+];
 
-  const built = cbor.buildTransaction(
-    [{ inputRaw: feeInput }],
-    3_000_000n,
-    null,
-    actions,
-    drepKeyHash,
-    feeChangeAddress,
-    200_000n,
+test("CIP-129 DRep ID encoding matches the known governance credential", () => {
+  assert.equal(
+    drepIdFromKeyHash("fdec0e7b970169151874a50e0f22f41fe95dd722eb0e1a11364095e2"),
+    "drep1yt77crnmjuqkj9gcwjjsurez7s07jhwhyt4suxs3xeqftcsfrspun",
   );
-
-  const body = cbor.readArrayItems(built.transaction)[0];
-  const inputSet = cbor.readArrayItems(cbor.unwrapTags(mapValue(cbor, body, 0)));
-  assert.equal(inputSet.length, 1);
-  assert.equal(cbor.bytesToHex(inputSet[0]), cbor.bytesToHex(feeInput));
-
-  const outputs = cbor.readArrayItems(mapValue(cbor, body, 1));
-  assert.equal(outputs.length, 1);
-  const outputItems = cbor.readArrayItems(outputs[0]);
-  assert.equal(cbor.bytesToHex(cbor.byteStringPayload(outputItems[0])), cbor.bytesToHex(feeChangeAddress));
-  assert.equal(cbor.decodeUnsigned(outputItems[1]), 2_800_000n);
-
-  const votingProcedures = mapValue(cbor, body, 19);
-  const voters = cbor.readMapEntries(votingProcedures);
-  assert.equal(voters.length, 1);
-  const voter = cbor.readArrayItems(voters[0].keyRaw);
-  assert.equal(cbor.decodeUnsigned(voter[0]), 2n);
-  assert.equal(cbor.bytesToHex(cbor.byteStringPayload(voter[1])), drepKeyHash);
-  const votes = cbor.readMapEntries(voters[0].valueRaw);
-  assert.equal(votes.length, 3);
-  const voteCodes = Array.from(votes, (entry) => cbor.decodeUnsigned(cbor.readArrayItems(entry.valueRaw)[0])).sort();
-  assert.deepEqual(voteCodes, [0n, 1n, 2n]);
 });
 
-test("browser role calls keep funds and submission on the fee wallet", async () => {
+async function makePlan() {
+  const account = generateEmulatorAccount({ lovelace: 10_000_000n });
+  const emulator = new Emulator([account]);
+  const lucid = await Lucid(emulator, "Custom");
+  lucid.selectWallet.fromSeed(account.seedPhrase);
+  const changeAddress = await lucid.wallet().address();
+  const feeUtxos = await lucid.wallet().getUtxos();
+  const drepKey = CML.PrivateKey.generate_ed25519();
+  const drepKeyHash = drepKey.to_public().hash().to_hex();
+  const plan = await buildVotingTransaction({
+    lucid,
+    feeUtxos,
+    changeAddress,
+    actions: ACTIONS,
+    drepKeyHash,
+  });
+  return { changeAddress, drepKey, drepKeyHash, emulator, plan };
+}
+
+test("Lucid builds one canonical transaction containing every selected DRep vote", async () => {
+  const { changeAddress, drepKeyHash, plan } = await makePlan();
+  const transaction = CML.Transaction.from_cbor_hex(plan.unsignedTx);
+  const body = transaction.body();
+
+  assert.equal(plan.unsignedTx, transaction.to_canonical_cbor_hex());
+  assert.equal(body.to_cbor_hex(), body.to_canonical_cbor_hex());
+  assert.equal(plan.inputCount, 1);
+  assert.equal(plan.outputCount, 1);
+  assert.equal(body.outputs().get(0).address().to_bech32(), changeAddress);
+  assert.equal(plan.change + plan.fee, 10_000_000n);
+
+  const procedures = body.voting_procedures();
+  assert.equal(procedures.len(), 1);
+  const voter = procedures.keys().get(0);
+  assert.equal(voter.kind(), CML.VoterKind.DRepKeyHash);
+  assert.equal(voter.as_d_rep_key_hash().to_hex(), drepKeyHash);
+  const votes = procedures.get(voter);
+  assert.equal(votes.len(), ACTIONS.length);
+
+  const observed = new Map();
+  const actionIds = votes.keys();
+  for (let index = 0; index < actionIds.len(); index += 1) {
+    const actionId = actionIds.get(index);
+    observed.set(
+      `${actionId.transaction_id().to_hex()}#${actionId.gov_action_index()}`,
+      votes.get(actionId).vote(),
+    );
+  }
+  assert.deepEqual(observed, new Map([
+    [`${ACTIONS[0].txHash}#0`, CML.Vote.Yes],
+    [`${ACTIONS[1].txHash}#1`, CML.Vote.No],
+    [`${ACTIONS[2].txHash}#2`, CML.Vote.Abstain],
+  ]));
+});
+
+test("Lucid assembles exact fee and DRep witnesses without changing the canonical body", async () => {
+  const { drepKey, drepKeyHash, plan } = await makePlan();
+  const feeWitness = await plan.txBuilder.partialSign.withWallet();
+  verifyWitnessSet(feeWitness, plan.paymentHashes, plan.unsignedTx, "Fee wallet");
+
+  const transaction = CML.Transaction.from_cbor_hex(plan.unsignedTx);
+  const drepWitnessBuilder = CML.TransactionWitnessSetBuilder.new();
+  drepWitnessBuilder.add_vkey(CML.make_vkey_witness(CML.hash_transaction(transaction.body()), drepKey));
+  const drepWitness = drepWitnessBuilder.build().to_canonical_cbor_hex();
+  verifyWitnessSet(drepWitness, [drepKeyHash], plan.unsignedTx, "DRep wallet");
+
+  const assembled = await assembleCanonicalTransaction(
+    plan,
+    [feeWitness, drepWitness],
+    [...plan.paymentHashes, drepKeyHash],
+    { txFeePerByte: 44, txFeeFixed: 155_381, maxTxSize: 16_384 },
+  );
+  const finalTransaction = CML.Transaction.from_cbor_hex(assembled.finalTx);
+  assert.equal(assembled.bodyHash, plan.bodyHash);
+  assert.equal(assembled.finalTx, finalTransaction.to_canonical_cbor_hex());
+  assert.equal(finalTransaction.witness_set().vkeywitnesses().len(), 2);
+});
+
+test("browser wallet calls keep all funds and submission on the fee role", async () => {
   const source = await readFile(new URL("../app.js", import.meta.url), "utf8");
-  assert.match(source, /state\.feeApi\.getUtxos\(\)/);
   assert.match(source, /state\.feeApi\.getChangeAddress\(\)/);
+  assert.match(source, /state\.feeLucid\.wallet\(\)\.getUtxos\(\)/);
   assert.match(source, /state\.feeApi\.submitTx\(finalTx\)/);
   assert.doesNotMatch(source, /state\.drepApi\.(?:getUtxos|getChangeAddress|submitTx)\(/);
-  assert.match(source, /witness\.keyHash !== state\.drepKeyHash/);
+  assert.match(source, /state\.drepApi\.cip95\.getPubDRepKey\(\)/);
+  assert.match(source, /state\.drepApi\.signTx\(state\.unsignedTx, true\)/);
 });

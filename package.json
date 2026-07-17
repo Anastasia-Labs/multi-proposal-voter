@@ -7,8 +7,15 @@
     "node": "24.x"
   },
   "scripts": {
-    "check": "node --check app.js && node --test",
-    "dev": "vercel dev",
+    "build": "vite build",
+    "check": "node --check app.js && node --check src/transaction.js && node --test && npm run build",
+    "dev": "vite",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "0.6.0"
+  },
+  "devDependencies": {
+    "vite": "8.1.5"
   }
 }

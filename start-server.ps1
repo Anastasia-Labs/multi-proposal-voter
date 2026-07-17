@@ -9,13 +9,17 @@ $ErrorActionPreference = "Stop"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
 $Root = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$StaticRoot = Join-Path $Root "dist"
 $KoiosBase = "https://api.koios.rest/api/v1"
 $MaxActions = 20
 $Routes = @{
-    "/"           = @{ File = "index.html"; Type = "text/html; charset=utf-8" }
-    "/index.html" = @{ File = "index.html"; Type = "text/html; charset=utf-8" }
-    "/styles.css" = @{ File = "styles.css"; Type = "text/css; charset=utf-8" }
-    "/app.js"     = @{ File = "app.js"; Type = "application/javascript; charset=utf-8" }
+    "/"                                           = @{ File = "index.html"; Type = "text/html; charset=utf-8" }
+    "/index.html"                                 = @{ File = "index.html"; Type = "text/html; charset=utf-8" }
+    "/assets/index.css"                           = @{ File = "assets\index.css"; Type = "text/css; charset=utf-8" }
+    "/assets/app.js"                              = @{ File = "assets\app.js"; Type = "application/javascript; charset=utf-8" }
+    "/assets/cardano_message_signing_bg.wasm"     = @{ File = "assets\cardano_message_signing_bg.wasm"; Type = "application/wasm" }
+    "/assets/cardano_multiplatform_lib_bg.wasm"   = @{ File = "assets\cardano_multiplatform_lib_bg.wasm"; Type = "application/wasm" }
+    "/assets/uplc_tx_bg.wasm"                     = @{ File = "assets\uplc_tx_bg.wasm"; Type = "application/wasm" }
 }
 
 function Send-Response {
@@ -238,6 +242,11 @@ function Read-RequestBody {
     return -join $Buffer
 }
 
+if (-not (Test-Path -LiteralPath (Join-Path $StaticRoot "index.html") -PathType Leaf)) {
+    Write-Error "Compiled assets are missing from the dist folder. Download a complete release ZIP or run npm ci and npm run build."
+    exit 1
+}
+
 $Listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
 try {
     $Listener.Start()
@@ -350,7 +359,7 @@ try {
             }
 
             $Route = $Routes[$Path]
-            $FilePath = Join-Path $Root $Route.File
+            $FilePath = Join-Path $StaticRoot $Route.File
             if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
                 $Body = [System.Text.Encoding]::UTF8.GetBytes("Required page file is missing")
                 Send-Response $Stream 500 "Internal Server Error" "text/plain; charset=utf-8" $Body ($Method -eq "HEAD")
