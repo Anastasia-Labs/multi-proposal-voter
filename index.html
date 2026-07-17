@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Multi-proposal DRep voter</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Cardano Mainnet governance</p>
+          <h1>Multi-proposal DRep voter</h1>
+        </div>
+        <div class="network-state"><span class="dot"></span><span id="networkState">Checking network</span></div>
+      </header>
+
+      <section class="section" aria-labelledby="proposalsHeading">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">1 / Proposals</p>
+            <h2 id="proposalsHeading">Choose governance votes</h2>
+          </div>
+          <button id="addProposal" type="button">Add proposal</button>
+        </div>
+        <div class="proposal-labels" aria-hidden="true">
+          <span>Governance URL or action hash</span><span>Vote</span><span></span>
+        </div>
+        <div id="proposalRows" class="proposal-rows"></div>
+        <div class="section-actions">
+          <span id="proposalSummary" class="muted">No validated proposals</span>
+          <button id="validateProposals" class="secondary" type="button">Validate proposals</button>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="walletsHeading">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">2 / Wallets</p>
+            <h2 id="walletsHeading">Connect signing roles</h2>
+          </div>
+          <button id="refreshWallets" class="icon-button" type="button" title="Refresh wallets" aria-label="Refresh wallets">&#8635;</button>
+        </div>
+        <div class="wallet-grid">
+          <div class="wallet-role">
+            <div class="role-heading"><strong>Fee payer</strong><span id="feeState" class="state">Waiting</span></div>
+            <label class="field"><span>CIP-30 wallet</span><select id="feeWallet"></select></label>
+            <button id="connectFee" type="button">Connect fee wallet</button>
+          </div>
+          <div class="wallet-role">
+            <div class="role-heading"><strong>DRep credential</strong><span id="drepState" class="state">Waiting</span></div>
+            <label class="field"><span>CIP-95 wallet</span><select id="drepWallet"></select></label>
+            <button id="connectDrep" type="button">Connect DRep wallet</button>
+            <code id="drepId" class="credential">Not connected</code>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="transactionHeading">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">3 / Transaction</p>
+            <h2 id="transactionHeading">Sign and submit</h2>
+          </div>
+          <button id="resetTransaction" class="text-button" type="button" disabled>Reset transaction</button>
+        </div>
+        <div id="txSummary" class="tx-summary" hidden>
+          <div><span>Votes</span><strong id="summaryVotes">0</strong></div>
+          <div><span>Inputs</span><strong id="summaryInputs">0</strong></div>
+          <div><span>Fee</span><strong id="summaryFee">0 ADA</strong></div>
+          <div><span>Change</span><strong id="summaryChange">0 ADA</strong></div>
+          <div class="body-hash"><span>Body hash</span><code id="summaryHash"></code></div>
+        </div>
+        <div class="transaction-actions">
+          <button id="signFee" class="secondary" type="button" disabled>Build and sign with fee wallet</button>
+          <button id="signDrepSubmit" class="primary" type="button" disabled>Sign with DRep and submit</button>
+        </div>
+        <div id="submission" class="submission" hidden>
+          <span>Submitted transaction</span>
+          <a id="submittedTx" target="_blank" rel="noreferrer"></a>
+        </div>
+      </section>
+
+      <section class="log-panel" aria-live="polite">
+        <div class="log-heading"><span>Status</span><button id="clearLog" class="text-button" type="button">Clear</button></div>
+        <pre id="statusLog"></pre>
+      </section>
+    </main>
+
+    <template id="proposalTemplate">
+      <div class="proposal-row">
+        <div class="proposal-input-wrap">
+          <input class="proposal-input" type="text" spellcheck="false" placeholder="adastat.net/governances/... or governance action hex" />
+          <span class="proposal-status"></span>
+        </div>
+        <div class="vote-control" role="group" aria-label="Vote choice">
+          <button type="button" data-vote="yes">Yes</button>
+          <button type="button" data-vote="no">No</button>
+          <button type="button" data-vote="abstain">Abstain</button>
+        </div>
+        <button class="remove-proposal" type="button" title="Remove proposal" aria-label="Remove proposal">&times;</button>
+      </div>
+    </template>
+
+    <script src="./app.js?v=4"></script>
+  </body>
+</html>
