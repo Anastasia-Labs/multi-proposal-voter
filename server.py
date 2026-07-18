@@ -64,8 +64,12 @@ class VoterHandler(SimpleHTTPRequestHandler):
             pass
 
     def do_GET(self) -> None:  # noqa: N802
-        if urllib.parse.urlsplit(self.path).path == "/api/network":
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/api/network":
             self.handle_network()
+            return
+        if path == "/api/koios/epoch_params":
+            self.handle_epoch_params()
             return
         super().do_GET()
 
@@ -108,6 +112,15 @@ class VoterHandler(SimpleHTTPRequestHandler):
             )
         except (KeyError, IndexError, TypeError, urllib.error.URLError) as error:
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": f"Koios network query failed: {error}"})
+
+    def handle_epoch_params(self) -> None:
+        try:
+            rows = koios_json("epoch_params?limit=1")
+            if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+                raise ValueError("Koios returned malformed epoch parameters.")
+            self.send_json(HTTPStatus.OK, [rows[0]])
+        except (ValueError, urllib.error.URLError) as error:
+            self.send_json(HTTPStatus.BAD_GATEWAY, {"error": f"Koios epoch-parameter query failed: {error}"})
 
     def handle_validate_proposals(self) -> None:
         try:

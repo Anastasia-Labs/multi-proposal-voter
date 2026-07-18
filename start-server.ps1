@@ -321,6 +321,23 @@ try {
                 continue
             }
 
+            if ($Method -eq "GET" -and $Path -eq "/api/koios/epoch_params") {
+                try {
+                    $Rows = Invoke-KoiosJson "epoch_params?limit=1"
+                    if ($null -eq $Rows -or @($Rows).Count -lt 1 -or $null -eq $Rows[0]) {
+                        throw "Koios returned malformed epoch parameters."
+                    }
+                    # Windows PowerShell 5.1 serializes a top-level Object[] as
+                    # {"value": [...]}; wrap the single Koios row explicitly.
+                    $Json = "[" + (ConvertTo-Json -InputObject $Rows[0] -Compress -Depth 8) + "]"
+                    $Body = [System.Text.Encoding]::UTF8.GetBytes($Json)
+                    Send-Response $Stream 200 "OK" "application/json; charset=utf-8" $Body $false
+                } catch {
+                    Send-Json $Stream 502 "Bad Gateway" ([ordered]@{ error = "Koios epoch-parameter query failed: $($_.Exception.Message)" })
+                }
+                continue
+            }
+
             if ($Method -eq "POST" -and ($Path -eq "/api/validate-proposals" -or $Path -eq "/api/validate-drep")) {
                 try {
                     $BodyText = Read-RequestBody $Reader $Headers

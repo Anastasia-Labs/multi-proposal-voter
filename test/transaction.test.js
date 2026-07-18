@@ -13,6 +13,7 @@ import {
   assembleCanonicalTransaction,
   buildVotingTransaction,
   drepIdFromKeyHash,
+  koiosProxyUrl,
   verifyWitnessSet,
 } from "../src/transaction.js";
 
@@ -27,6 +28,15 @@ test("CIP-129 DRep ID encoding matches the known governance credential", () => {
     drepIdFromKeyHash("fdec0e7b970169151874a50e0f22f41fe95dd722eb0e1a11364095e2"),
     "drep1yt77crnmjuqkj9gcwjjsurez7s07jhwhyt4suxs3xeqftcsfrspun",
   );
+});
+
+test("browser Koios traffic uses the application's same-origin proxy", () => {
+  assert.equal(
+    koiosProxyUrl("https://multi-proposal-voter.vercel.app"),
+    "https://multi-proposal-voter.vercel.app/api/koios",
+  );
+  assert.equal(koiosProxyUrl("http://127.0.0.1:8793"), "http://127.0.0.1:8793/api/koios");
+  assert.throws(() => koiosProxyUrl("null"), /HTTP or HTTPS/);
 });
 
 async function makePlan() {

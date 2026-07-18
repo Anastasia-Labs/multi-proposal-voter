@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ApiError } from "../lib/api.js";
+import { getEpochParameters } from "../api/koios/epoch_params.js";
 import { getNetwork } from "../api/network.js";
 import { normalizeDrep, validateDrep } from "../api/validate-drep.js";
 import { normalizeActions, validateProposals } from "../api/validate-proposals.js";
@@ -62,6 +63,34 @@ test("network endpoint accepts only complete integer protocol data", async () =>
     utxoCostPerByte: 4310,
     maxTxSize: 16384,
   });
+});
+
+test("Lucid epoch parameters are fetched only through the fixed Koios route", async () => {
+  const params = {
+    min_fee_a: 44,
+    min_fee_b: 155381,
+    max_tx_size: 16384,
+    max_val_size: 5000,
+    key_deposit: "2000000",
+    pool_deposit: "500000000",
+    drep_deposit: "500000000",
+    gov_action_deposit: "100000000000",
+    price_mem: 0.0577,
+    price_step: 0.0000721,
+    max_tx_ex_mem: 16500000,
+    max_tx_ex_steps: 10000000000,
+    coins_per_utxo_size: "4310",
+    collateral_percent: 150,
+    max_collateral_inputs: 3,
+    min_fee_ref_script_cost_per_byte: 15,
+    cost_models: { PlutusV1: [], PlutusV2: [], PlutusV3: [] },
+  };
+  const fetchImpl = async (url, options) => {
+    assert.equal(url, "https://api.koios.rest/api/v1/epoch_params?limit=1");
+    assert.equal(options.method, "GET");
+    return jsonResponse([params]);
+  };
+  assert.deepEqual(await getEpochParameters(fetchImpl), [params]);
 });
 
 test("DRep validation binds the CIP-129 ID to the connected key hash", async () => {

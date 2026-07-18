@@ -12,13 +12,14 @@ Wallet UTxOs, addresses, transaction CBOR, and witnesses remain in the browser. 
 ## Deploy to Vercel
 
 1. In Vercel, choose **Add New Project** and import `Anastasia-Labs/multi-proposal-voter`.
-2. Leave the framework preset as **Other** and the root directory as the repository root.
+2. Use the **Vite** framework preset and leave the root directory as the repository root.
 3. No environment variables, database, or secrets are required.
 4. Deploy, then open the HTTPS deployment in a desktop browser profile containing the Cardano wallet extensions.
 
 `vercel.json` runs `npm run build` and serves Vite's `dist` output. It also configures security headers and these narrow Node endpoints:
 
 - `GET /api/network`
+- `GET /api/koios/epoch_params` (fixed same-origin proxy used by Lucid)
 - `POST /api/validate-proposals`
 - `POST /api/validate-drep`
 

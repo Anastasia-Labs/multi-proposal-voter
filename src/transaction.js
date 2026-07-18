@@ -1,6 +1,5 @@
 import { CML, Koios, Lucid, fromHex } from "@lucid-evolution/lucid";
 
-const KOIOS_MAINNET = "https://api.koios.rest/api/v1";
 const VOTE_CHOICES = Object.freeze({
   no: "No",
   yes: "Yes",
@@ -97,8 +96,21 @@ export function feeChangeAddressFromHex(addressHex) {
   return address.to_bech32();
 }
 
-export async function createFeeLucid(walletApi) {
-  const lucid = await Lucid(new Koios(KOIOS_MAINNET), "Mainnet");
+export function koiosProxyUrl(origin = globalThis.location?.origin) {
+  let url;
+  try {
+    url = new URL(origin);
+  } catch (_error) {
+    throw new Error("The voter must be served from an HTTP or HTTPS origin.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("The voter must be served from an HTTP or HTTPS origin.");
+  }
+  return `${url.origin}/api/koios`;
+}
+
+export async function createFeeLucid(walletApi, origin) {
+  const lucid = await Lucid(new Koios(koiosProxyUrl(origin)), "Mainnet");
   lucid.selectWallet.fromAPI(walletApi);
   return lucid;
 }
